@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { AuditAction } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 
 export async function writeAuditLog(params: {
   organizationId: string;
@@ -7,8 +8,8 @@ export async function writeAuditLog(params: {
   action: AuditAction;
   entityType: string;
   entityId: string;
-  oldData?: unknown;
-  newData?: unknown;
+  oldData?: Prisma.InputJsonValue;
+  newData?: Prisma.InputJsonValue;
   ip?: string | null;
 }) {
   await prisma.auditLog.create({
@@ -18,8 +19,8 @@ export async function writeAuditLog(params: {
       action: params.action,
       entityType: params.entityType,
       entityId: params.entityId,
-      oldData: params.oldData === undefined ? undefined : (params.oldData as any),
-      newData: params.newData === undefined ? undefined : (params.newData as any),
+      oldData: params.oldData,
+      newData: params.newData,
       ip: params.ip ?? null,
     },
   });

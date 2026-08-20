@@ -64,12 +64,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     jwt: async ({ token, user }) => {
       if (user) {
         token.id = user.id as string;
-        token.organizationId = (user as any).organizationId;
-        token.departmentId = (user as any).departmentId;
-        token.roleId = (user as any).roleId;
-        token.roleName = (user as any).roleName;
-        token.roleKey = (user as any).roleKey;
-        token.permissions = (user as any).permissions;
+        token.organizationId = user.organizationId as string;
+        token.departmentId = user.departmentId ?? null;
+        token.roleId = user.roleId as string;
+        token.roleName = user.roleName as string;
+        token.roleKey = user.roleKey as string;
+        token.permissions = user.permissions ?? [];
       }
       return token;
     },
