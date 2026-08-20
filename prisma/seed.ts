@@ -329,7 +329,7 @@ async function main() {
       creatorId: operacoes.id,
       departmentId: depts.operacoes.id,
       priority: "MEDIUM",
-      dueDate: hoursAgo(-72),
+      dueDate: hoursAgo(24),
       status: "IN_PROGRESS",
       recurrence: "WEEKLY",
     },
