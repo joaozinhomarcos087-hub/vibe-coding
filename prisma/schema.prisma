@@ -1,0 +1,974 @@
+// Mini SaaS de Gestao Operacional, Comercial e Marketing
+// Prisma schema - see /docs/architecture.md for module explanations.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// MULTI-TENANT SCAFFOLD (section 33)
+// Every tenant-scoped table carries organizationId so the app can be split
+// into multiple isolated companies later without a schema rewrite.
+// ---------------------------------------------------------------------------
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  departments Department[]
+  roles       Role[]
+  users       User[]
+  companies   Company[]
+  leads       Lead[]
+  campaigns   Campaign[]
+  processes   Process[]
+  tasks       Task[]
+  kpis        Kpi[]
+  goals       Goal[]
+  trainings   Training[]
+  auditLogs   AuditLog[]
+  settings    SystemSetting[]
+  automations AutomationRule[]
+
+  @@map("organizations")
+}
+
+// ---------------------------------------------------------------------------
+// RBAC (sections 8 and 34)
+// ---------------------------------------------------------------------------
+enum RoleKey {
+  DIRETOR
+  GESTOR_COMERCIAL
+  GESTOR_MARKETING
+  OPERACOES
+  SDR
+  CLOSER
+  MARKETING
+  DESIGNER
+  FILMMAKER
+  SOCIAL_MEDIA
+  TRAFEGO
+  CUSTOM
+}
+
+model Role {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            RoleKey      @default(CUSTOM)
+  name           String
+  description    String?
+  isSystem       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+  goals       Goal[]
+  trainings   Training[]
+
+  @@unique([organizationId, key])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique // e.g. "crm.view_all", "crm.view_own", "audit.view"
+  module      String // e.g. "crm", "tasks", "marketing"
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ---------------------------------------------------------------------------
+// USERS / EMPLOYEES / DEPARTMENTS (sections 6, 7, 20)
+// ---------------------------------------------------------------------------
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name         String
+  email        String     @unique
+  phone        String?
+  avatarUrl    String?
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  employee Employee?
+
+  resetTokens         PasswordResetToken[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  ownedLeads          Lead[]               @relation("LeadOwner")
+  ownedDeals          Deal[]               @relation("DealOwner")
+  ownedFollowUps      FollowUp[]           @relation("FollowUpOwner")
+  activities          Activity[]           @relation("ActivityAuthor")
+  createdTasks        Task[]               @relation("TaskCreator")
+  assignedTasks       Task[]               @relation("TaskAssignee")
+  ownedProcesses      Process[]            @relation("ProcessOwner")
+  ownedProcessSteps   ProcessStep[]        @relation("ProcessStepOwner")
+  ownedMarketingTasks MarketingTask[]      @relation("MarketingTaskAssignee")
+  requestedMarketing  MarketingTask[]      @relation("MarketingTaskRequester")
+  ownedCampaigns      Campaign[]           @relation("CampaignOwner")
+  ownedContent        Content[]            @relation("ContentOwner")
+  ownedKpis           Kpi[]                @relation("KpiOwner")
+  comments            Comment[]            @relation("CommentAuthor")
+  attachments         Attachment[]         @relation("AttachmentUploader")
+  trainingProgress    TrainingProgress[]
+
+  @@map("users")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@map("password_reset_tokens")
+}
+
+model Department {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  createdAt      DateTime     @default(now())
+
+  users     User[]
+  employees Employee[]
+  processes Process[]
+  tasks     Task[]
+  kpis      Kpi[]
+  goals     Goal[]
+  trainings Training[]
+
+  @@unique([organizationId, name])
+  @@map("departments")
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+model Employee {
+  id            String         @id @default(cuid())
+  userId        String         @unique
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobTitle      String
+  departmentId  String?
+  department    Department?    @relation(fields: [departmentId], references: [id])
+  managerId     String?
+  manager       Employee?      @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports Employee[]     @relation("EmployeeManager")
+  hireDate      DateTime
+  status        EmployeeStatus @default(ACTIVE)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("employees")
+}
+
+// ---------------------------------------------------------------------------
+// CRM BASE ENTITIES (section 10)
+// ---------------------------------------------------------------------------
+model Company {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  cnpj           String?
+  industry       String?
+  phone          String?
+  website        String?
+  isClient       Boolean      @default(false)
+  churnedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  contacts       Contact[]
+  leads          Lead[]
+  marketingTasks MarketingTask[]
+
+  @@map("companies")
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  position  String?
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+  createdAt DateTime @default(now())
+
+  leads Lead[]
+
+  @@map("contacts")
+}
+
+// ---------------------------------------------------------------------------
+// CRM PIPELINE (sections 10, 11, 12)
+// ---------------------------------------------------------------------------
+enum LeadStage {
+  NOVO_LEAD
+  PRIMEIRO_CONTATO
+  QUALIFICACAO
+  REUNIAO_AGENDADA
+  REUNIAO_REALIZADA
+  PROPOSTA_ENVIADA
+  NEGOCIACAO
+  FECHADO_GANHO
+  FECHADO_PERDIDO
+  POS_VENDA
+}
+
+enum LeadTemperature {
+  QUENTE
+  MORNO
+  FRIO
+}
+
+enum AlertLevel {
+  NONE
+  YELLOW
+  RED
+}
+
+model Lead {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name       String
+  companyId  String?
+  company    Company?  @relation(fields: [companyId], references: [id])
+  contactId  String?
+  contact    Contact?  @relation(fields: [contactId], references: [id])
+  phone      String?
+  email      String?
+  source     String? // origem
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+
+  ownerId String
+  owner   User   @relation("LeadOwner", fields: [ownerId], references: [id])
+
+  stage       LeadStage       @default(NOVO_LEAD)
+  temperature LeadTemperature @default(MORNO)
+
+  potentialValue Decimal? @db.Decimal(14, 2)
+  closedValue    Decimal? @db.Decimal(14, 2)
+
+  lastContactAt DateTime?
+  nextContactAt DateTime?
+  alertLevel    AlertLevel @default(NONE)
+
+  notes String?
+
+  enteredAt DateTime  @default(now())
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  deals      Deal[]
+  proposals  Proposal[]
+  activities Activity[]
+  followUps  FollowUp[]
+  tasks      Task[]
+
+  @@index([organizationId, stage])
+  @@index([ownerId])
+  @@map("leads")
+}
+
+enum DealStage {
+  OPEN
+  WON
+  LOST
+}
+
+model Deal {
+  id         String    @id @default(cuid())
+  leadId     String
+  lead       Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  ownerId    String
+  owner      User      @relation("DealOwner", fields: [ownerId], references: [id])
+  value      Decimal   @db.Decimal(14, 2)
+  stage      DealStage @default(OPEN)
+  wonAt      DateTime?
+  lostAt     DateTime?
+  lostReason String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  proposals Proposal[]
+
+  @@map("deals")
+}
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  NEGOTIATION
+  APPROVED
+  REJECTED
+}
+
+model Proposal {
+  id          String         @id @default(cuid())
+  leadId      String
+  lead        Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  dealId      String?
+  deal        Deal?          @relation(fields: [dealId], references: [id])
+  title       String
+  value       Decimal        @db.Decimal(14, 2)
+  status      ProposalStatus @default(DRAFT)
+  sentAt      DateTime?
+  respondedAt DateTime?
+  validUntil  DateTime?
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("proposals")
+}
+
+enum ActivityType {
+  NOTE
+  CALL
+  EMAIL
+  MEETING
+  STATUS_CHANGE
+  OTHER
+}
+
+model Activity {
+  id          String       @id @default(cuid())
+  leadId      String?
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type        ActivityType
+  description String
+  authorId    String
+  author      User         @relation("ActivityAuthor", fields: [authorId], references: [id])
+  createdAt   DateTime     @default(now())
+
+  @@index([leadId])
+  @@map("activities")
+}
+
+enum FollowUpType {
+  WHATSAPP
+  LIGACAO
+  EMAIL
+  REUNIAO
+  OUTRO
+}
+
+enum FollowUpStatus {
+  PENDENTE
+  CONCLUIDO
+  ATRASADO
+  CANCELADO
+}
+
+model FollowUp {
+  id          String         @id @default(cuid())
+  leadId      String
+  lead        Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  ownerId     String
+  owner       User           @relation("FollowUpOwner", fields: [ownerId], references: [id])
+  scheduledAt DateTime
+  type        FollowUpType
+  notes       String?
+  status      FollowUpStatus @default(PENDENTE)
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([leadId])
+  @@index([ownerId, status])
+  @@map("follow_ups")
+}
+
+// ---------------------------------------------------------------------------
+// PROCESSES (section 13)
+// ---------------------------------------------------------------------------
+enum ProcessStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model Process {
+  id               String        @id @default(cuid())
+  organizationId   String
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String
+  description      String?
+  departmentId     String?
+  department       Department?   @relation(fields: [departmentId], references: [id])
+  ownerId          String
+  owner            User          @relation("ProcessOwner", fields: [ownerId], references: [id])
+  deadline         DateTime?
+  kpiId            String?
+  kpi              Kpi?          @relation(fields: [kpiId], references: [id])
+  documentationUrl String?
+  status           ProcessStatus @default(ACTIVE)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  steps ProcessStep[]
+  raci  RaciEntry[]
+
+  @@map("processes")
+}
+
+enum StepStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  LATE
+}
+
+model ProcessStep {
+  id          String     @id @default(cuid())
+  processId   String
+  process     Process    @relation(fields: [processId], references: [id], onDelete: Cascade)
+  name        String
+  order       Int
+  ownerId     String
+  owner       User       @relation("ProcessStepOwner", fields: [ownerId], references: [id])
+  deadline    DateTime?
+  status      StepStatus @default(PENDING)
+  notes       String?
+  evidenceUrl String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  checklistItems ChecklistItem[]
+  tasks          Task[]
+
+  @@map("process_steps")
+}
+
+model ChecklistItem {
+  id            String      @id @default(cuid())
+  processStepId String
+  processStep   ProcessStep @relation(fields: [processStepId], references: [id], onDelete: Cascade)
+  label         String
+  done          Boolean     @default(false)
+  order         Int         @default(0)
+
+  @@map("checklist_items")
+}
+
+enum RaciRole {
+  RESPONSIBLE
+  ACCOUNTABLE
+  CONSULTED
+  INFORMED
+}
+
+model RaciEntry {
+  id        String   @id @default(cuid())
+  processId String
+  process   Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
+  roleLabel String // e.g. "SDR", "Gestor Comercial"
+  raciRole  RaciRole
+
+  @@map("raci_entries")
+}
+
+// ---------------------------------------------------------------------------
+// TASKS (section 17)
+// ---------------------------------------------------------------------------
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  LATE
+  CANCELED
+}
+
+enum TaskRecurrence {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+model Task {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  assigneeId     String
+  assignee       User           @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creatorId      String
+  creator        User           @relation("TaskCreator", fields: [creatorId], references: [id])
+  departmentId   String?
+  department     Department?    @relation(fields: [departmentId], references: [id])
+  priority       TaskPriority   @default(MEDIUM)
+  dueDate        DateTime?
+  status         TaskStatus     @default(TODO)
+  recurrence     TaskRecurrence @default(NONE)
+
+  processStepId   String?
+  processStep     ProcessStep? @relation(fields: [processStepId], references: [id])
+  leadId          String?
+  lead            Lead?        @relation(fields: [leadId], references: [id])
+  clientCompanyId String?
+
+  escalatedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  comments    Comment[]
+  attachments Attachment[]
+
+  @@index([assigneeId, status])
+  @@map("tasks")
+}
+
+// ---------------------------------------------------------------------------
+// MARKETING (section 15)
+// ---------------------------------------------------------------------------
+enum CampaignChannel {
+  META_ADS
+  GOOGLE_ADS
+  ORGANIC
+  OTHER
+}
+
+enum CampaignStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  FINISHED
+}
+
+model Campaign {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  channel        CampaignChannel
+  budget         Decimal?        @db.Decimal(14, 2)
+  startDate      DateTime?
+  endDate        DateTime?
+  ownerId        String
+  owner          User            @relation("CampaignOwner", fields: [ownerId], references: [id])
+  status         CampaignStatus  @default(PLANNED)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  leads   Lead[]
+  content Content[]
+  metrics CampaignMetric[]
+
+  @@map("campaigns")
+}
+
+model CampaignMetric {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+  periodEnd   DateTime
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  leadsCount  Int      @default(0)
+  spend       Decimal  @db.Decimal(14, 2)
+  revenue     Decimal? @db.Decimal(14, 2)
+  createdAt   DateTime @default(now())
+
+  @@map("campaign_metrics")
+}
+
+enum ContentType {
+  ARTE
+  VIDEO
+  REELS
+  COPY
+  POST
+}
+
+enum ContentStatus {
+  BACKLOG
+  BRIEFING
+  EM_PRODUCAO
+  REVISAO
+  AJUSTES
+  APROVACAO
+  APROVADO
+  PUBLICADO
+  FINALIZADO
+}
+
+model Content {
+  id          String        @id @default(cuid())
+  title       String
+  type        ContentType
+  campaignId  String?
+  campaign    Campaign?     @relation(fields: [campaignId], references: [id])
+  ownerId     String
+  owner       User          @relation("ContentOwner", fields: [ownerId], references: [id])
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  status      ContentStatus @default(BACKLOG)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("content")
+}
+
+enum MarketingTaskType {
+  ARTE
+  VIDEO
+  REELS
+  COPY
+  CAMPANHA
+  SOCIAL_MEDIA
+  TRAFEGO
+  OUTRO
+}
+
+model MarketingTask {
+  id              String            @id @default(cuid())
+  title           String
+  description     String?
+  clientCompanyId String?
+  clientCompany   Company?          @relation(fields: [clientCompanyId], references: [id])
+  type            MarketingTaskType
+  assigneeId      String
+  assignee        User              @relation("MarketingTaskAssignee", fields: [assigneeId], references: [id])
+  requesterId     String
+  requester       User              @relation("MarketingTaskRequester", fields: [requesterId], references: [id])
+  priority        TaskPriority      @default(MEDIUM)
+  dueDate         DateTime?
+  status          ContentStatus     @default(BACKLOG)
+  approvedAt      DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  comments    Comment[]
+  attachments Attachment[]
+
+  @@map("marketing_tasks")
+}
+
+// ---------------------------------------------------------------------------
+// SHARED: COMMENTS & ATTACHMENTS
+// ---------------------------------------------------------------------------
+model Comment {
+  id              String         @id @default(cuid())
+  body            String
+  authorId        String
+  author          User           @relation("CommentAuthor", fields: [authorId], references: [id])
+  taskId          String?
+  task            Task?          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  marketingTaskId String?
+  marketingTask   MarketingTask? @relation(fields: [marketingTaskId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+
+  @@map("comments")
+}
+
+model Attachment {
+  id              String         @id @default(cuid())
+  url             String
+  filename        String
+  uploadedById    String
+  uploadedBy      User           @relation("AttachmentUploader", fields: [uploadedById], references: [id])
+  taskId          String?
+  task            Task?          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  marketingTaskId String?
+  marketingTask   MarketingTask? @relation(fields: [marketingTaskId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+
+  @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------
+// KPIs & GOALS (sections 18, 19)
+// ---------------------------------------------------------------------------
+enum Period {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+}
+
+enum KpiStatus {
+  ON_TARGET
+  WARNING
+  OFF_TARGET
+}
+
+model Kpi {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  formula        String?
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id])
+  ownerId        String
+  owner          User         @relation("KpiOwner", fields: [ownerId], references: [id])
+  targetValue    Decimal      @db.Decimal(14, 2)
+  unit           String?
+  period         Period       @default(MONTHLY)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  results   KpiResult[]
+  processes Process[]
+
+  @@map("kpis")
+}
+
+model KpiResult {
+  id          String    @id @default(cuid())
+  kpiId       String
+  kpi         Kpi       @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+  periodEnd   DateTime
+  resultValue Decimal   @db.Decimal(14, 2)
+  status      KpiStatus
+  recordedAt  DateTime  @default(now())
+
+  @@map("kpi_results")
+}
+
+enum GoalScope {
+  COMPANY
+  DEPARTMENT
+  ROLE
+  EMPLOYEE
+}
+
+model Goal {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  scope          GoalScope
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id])
+  roleId         String?
+  role           Role?        @relation(fields: [roleId], references: [id])
+  employeeId     String?
+  targetValue    Decimal      @db.Decimal(14, 2)
+  period         Period       @default(MONTHLY)
+  startDate      DateTime
+  endDate        DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  progress GoalProgress[]
+
+  @@map("goals")
+}
+
+model GoalProgress {
+  id            String   @id @default(cuid())
+  goalId        String
+  goal          Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  achievedValue Decimal  @db.Decimal(14, 2)
+  recordedAt    DateTime @default(now())
+
+  @@map("goal_progress")
+}
+
+// ---------------------------------------------------------------------------
+// TRAININGS (section 21)
+// ---------------------------------------------------------------------------
+model Training {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id])
+  roleId         String?
+  role           Role?        @relation(fields: [roleId], references: [id])
+  materialUrl    String?
+  videoUrl       String?
+  deadline       DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  progress TrainingProgress[]
+
+  @@map("trainings")
+}
+
+enum TrainingStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  LATE
+}
+
+model TrainingProgress {
+  id              String         @id @default(cuid())
+  trainingId      String
+  training        Training       @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          TrainingStatus @default(PENDING)
+  progressPercent Int            @default(0)
+  completedAt     DateTime?
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([trainingId, userId])
+  @@map("training_progress")
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICATIONS (section 22)
+// ---------------------------------------------------------------------------
+enum NotificationType {
+  FOLLOW_UP_PENDING
+  TASK_LATE
+  GOAL_PROGRESS
+  LEAD_NO_CONTACT
+  PROPOSAL_WAITING
+  MARKETING_LATE
+  GENERIC
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// AUDIT LOG (section 24)
+// ---------------------------------------------------------------------------
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  STATUS_CHANGE
+  ASSIGNEE_CHANGE
+  PERMISSION_CHANGE
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  action         AuditAction
+  entityType     String
+  entityId       String
+  oldData        Json?
+  newData        Json?
+  ip             String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, entityType, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// AUTOMATION ENGINE (section 23) & SETTINGS (section 34)
+// ---------------------------------------------------------------------------
+model AutomationRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  trigger        Json // e.g. { entity: "lead", event: "no_contact_hours", threshold: 48 }
+  action         Json // e.g. { type: "notify", target: "owner" }
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("automation_rules")
+}
+
+model SystemSetting {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String
+  value          Json
+  description    String?
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, key])
+  @@map("system_settings")
+}
