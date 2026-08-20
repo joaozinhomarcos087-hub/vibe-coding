@@ -1,0 +1,75 @@
+"use client";
+
+import { useActionState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { createKpi } from "./actions";
+
+const inputClass =
+  "mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-slate-900";
+const labelClass = "block text-xs font-medium text-slate-500";
+
+export function NewKpiForm({ departments }: { departments: { id: string; name: string }[] }) {
+  const [state, formAction, pending] = useActionState(createKpi, {});
+  const formRef = useRef<HTMLFormElement>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (state?.success) {
+      formRef.current?.reset();
+      router.refresh();
+    }
+  }, [state, router]);
+
+  return (
+    <form ref={formRef} action={formAction} className="grid grid-cols-2 gap-3">
+      <div className="col-span-2">
+        <label className={labelClass}>Nome *</label>
+        <input name="name" required className={inputClass} />
+      </div>
+      <div className="col-span-2">
+        <label className={labelClass}>Descricao</label>
+        <input name="description" className={inputClass} />
+      </div>
+      <div className="col-span-2">
+        <label className={labelClass}>Formula</label>
+        <input name="formula" placeholder="Ex: (fechados / leads) * 100" className={inputClass} />
+      </div>
+      <div>
+        <label className={labelClass}>Setor</label>
+        <select name="departmentId" className={inputClass}>
+          <option value="">Geral</option>
+          {departments.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className={labelClass}>Periodo *</label>
+        <select name="period" required defaultValue="MONTHLY" className={inputClass}>
+          <option value="DAILY">Diario</option>
+          <option value="WEEKLY">Semanal</option>
+          <option value="MONTHLY">Mensal</option>
+          <option value="QUARTERLY">Trimestral</option>
+        </select>
+      </div>
+      <div>
+        <label className={labelClass}>Meta *</label>
+        <input name="targetValue" type="number" step="0.01" required className={inputClass} />
+      </div>
+      <div>
+        <label className={labelClass}>Unidade</label>
+        <input name="unit" placeholder="%, R$, un." className={inputClass} />
+      </div>
+      {state?.error && <p className="col-span-2 text-xs text-red-600">{state.error}</p>}
+      <button
+        type="submit"
+        disabled={pending}
+        className="col-span-2 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+      >
+        {pending ? "Criando..." : "Criar KPI"}
+      </button>
+    </form>
+  );
+}

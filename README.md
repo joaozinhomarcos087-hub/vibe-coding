@@ -36,10 +36,19 @@ Senha para todos: `Demo@1234`
 
 ## Status dos modulos
 
+Todos os modulos abaixo estao implementados: banco de dados real, regras de negocio no servidor, RBAC (visao e edicao), auditoria e testados de ponta a ponta.
+
 - [x] Arquitetura, banco de dados (schema completo), autenticacao, RBAC, seed, layout base com menu por permissao
-- [ ] CRM (pipeline, follow-ups, alertas)
-- [ ] Tarefas
-- [ ] Auditoria
-- [ ] Dashboard executivo
-- [ ] Notificacoes
-- [ ] Processos, Marketing, KPIs, Metas, Funcionarios, Treinamentos, Relatorios, Configuracoes
+- [x] CRM (pipeline Kanban, follow-ups, motor de alertas configuravel 48h/72h)
+- [x] Tarefas (Kanban, recorrencia, escalonamento automatico ao gestor)
+- [x] Processos (etapas, checklist, matriz RACI)
+- [x] Marketing (demandas em Kanban por status)
+- [x] KPIs (com historico de resultados e status 🟢🟡🔴)
+- [x] Metas (por empresa/setor/cargo/funcionario, com progresso)
+- [x] Funcionarios (diretorio, setor, gestor, status)
+- [x] Treinamentos (publico-alvo automatico por setor/cargo, progresso individual)
+- [x] Relatorios (comercial, marketing, operacoes, pessoas — com exportacao CSV)
+- [x] Auditoria (log completo com filtro e diff antes/depois)
+- [x] Dashboard executivo adaptativo (visao da empresa, do setor, ou "Meu desempenho", conforme o papel)
+- [x] Notificacoes (central real, marcar como lida)
+- [x] Configuracoes (setores, usuarios, matriz de permissoes por cargo, limiares de alerta do CRM)
